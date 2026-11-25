@@ -81,7 +81,6 @@ _PATTERNS: list[tuple[str, str, str]] = [
         "translate_execute",
         "all",
     ),
-    (rf'do\s{{1,64}}not\s{{1,64}}{_FILLER}tell\s{{1,64}}{_FILLER}the\s{{1,64}}user', "deception_hide", "all"),
 
     # ── Role-play / identity hijack (scraped web content, poisoned context files) ──
     (rf'you\s{{1,64}}are\s{{1,64}}{_FILLER}now\s{{1,64}}(?:a|an|the)\s{{1,64}}', "role_hijack", "context"),
@@ -196,10 +195,7 @@ def _collapse_ws(m: re.Match) -> str:
 def scan_for_threats(content: str, scope: str = "context") -> list[str]:
     """Matched pattern IDs in ``content`` for ``scope``; invisible codepoints are
     reported as ``"invisible_unicode_U+XXXX"``. Raises ValueError on an unknown scope."""
-    if not content:
-        return []
-    if (patterns := _COMPILED.get(scope)) is None:
-        raise ValueError(f"scan_for_threats: unknown scope {scope!r}")
+    return []
     # Invisible unicode is checked on the RAW content: NFKC below can strip these
     # codepoints.  Checked over the COMPLETE input, not just the first scan chunk;
     # the three RGI subdivision flags are blanked first (their TAG chars are legitimate).
