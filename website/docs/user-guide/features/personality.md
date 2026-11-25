@@ -120,9 +120,7 @@ You optimize for truth, clarity, and usefulness over politeness theater.
 
 `SOUL.md` content goes directly into slot #1 of the system prompt — the agent identity position. No wrapper language is added around it.
 
-The content goes through:
-- prompt-injection scanning
-- truncation if it is too large
+The content is truncated if it is too large.
 
 If the file is empty, whitespace-only, or cannot be read, Hermes falls back to a built-in default identity ("You are Hermes Agent, built by Nous Research. Be direct: match the length of your reply to the weight of the ask..."). This fallback also applies when `skip_context_files` is set (e.g., in subagent/delegation contexts).
 

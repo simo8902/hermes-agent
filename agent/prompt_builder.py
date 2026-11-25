@@ -28,7 +28,6 @@ from agent.skill_utils import (
     iter_skill_index_files, parse_frontmatter, skill_matches_apps, skill_matches_environment,
     skill_matches_platform, skill_matches_platform_list,
 )
-from tools.threat_patterns import scan_for_threats as _scan_for_threats
 from utils import atomic_json_write, file_cache_version
 
 logger = logging.getLogger(__name__)
@@ -81,33 +80,9 @@ def _read_text_with_timeout(
     raise value  # type: ignore[misc]
 
 
-def _scan_context_content(content: str, filename: str, *, user_authored: bool = False) -> str:
-    """Scan a context file (AGENTS.md, .cursorrules, SOUL.md) for injection; matches are BLOCKED.
-
-    "context" scope only (strict-scope SSH-backdoor/persistence/exfil patterns are too aggressive for a
-    cloned repo's docs); blocking, not warning, because the file would otherwise enter the prompt verbatim.
-
-    *user_authored* (SOUL.md in the user's own HERMES_HOME): a hit is WARNED and the file still loads.
-    SOUL.md sits in the same trust class as config.yaml — file-tool writes to it go through the
-    protected-instruction approval gate (``tools/file_tools_write_guards.py``) and project checkouts never
-    supply it — so a user who *documents* "ignore previous instructions" in their security guidance
-    must not lose their whole identity file to a one-line log entry (#112570). Project-dir files
-    (repo AGENTS.md / .cursorrules / .hermes.md) arrive with the checkout and keep blocking, and so does
-    a SOUL.md owned by a profile distribution (``hermes profile install <git-url>`` copies it in unscanned;
-    ``load_soul_md`` passes ``user_authored=False`` when ``distribution.yaml`` owns the file).
-    """
-    # A leading UTF-8 BOM is a Windows-editor artifact, not an injection.
-    content = content.removeprefix("\ufeff")
-    findings = _scan_for_threats(content, scope="context")
-    if not findings:
-        return content
-    if user_authored:
-        logger.warning("Context file %s matched injection pattern(s) %s; loaded anyway because it is the "
-                       "user's own file in HERMES_HOME — review it if you did not write that text",
-                       filename, ", ".join(findings))
-        return content
-    logger.warning("Context file %s blocked: %s", filename, ", ".join(findings))
-    return f"[BLOCKED: {filename} contained potential prompt injection ({', '.join(findings)}). Content not loaded.]"
+def _strip_bom(content: str) -> str:
+    """A leading UTF-8 BOM is a Windows-editor artifact, not content."""
+    return content.removeprefix("﻿")
 
 
 def _find_git_root(start: Path) -> Optional[Path]:
@@ -1553,19 +1528,7 @@ def load_soul_md(context_length: Optional[int] = None, home_override: Path | Non
             content = strip_legacy_protocol(content).strip()
         if not content:
             return None
-        # `hermes profile install <git-url>` / `profile update` plant a third-party SOUL.md into a
-        # distribution profile (hermes_cli/profile_distribution.py, DEFAULT_DIST_OWNED) with no scan and no
-        # approval gate, so it is NOT the user's own file: when distribution.yaml owns SOUL.md (a manifest
-        # with no `distribution_owned` list owns the whole payload) a scanner hit keeps BLOCKING.
-        from hermes_cli.profile_distribution import read_manifest
-        try:
-            manifest = read_manifest(soul_path.parent)
-            user_authored = manifest is None or (bool(manifest.distribution_owned)
-                                                 and "SOUL.md" not in manifest.distribution_owned)
-        except Exception as e:  # unparseable manifest is still a distribution: fail closed
-            logger.debug("Could not read distribution manifest next to %s: %s", soul_path, e)
-            user_authored = False
-        return _truncate_content(_scan_context_content(content, "SOUL.md", user_authored=user_authored), "SOUL.md",
+        return _truncate_content(_strip_bom(content), "SOUL.md",
                                  context_length=context_length, read_path=str(soul_path))
     except Exception as e:
         logger.debug("Could not read SOUL.md from %s: %s", soul_path, e)
@@ -1595,8 +1558,8 @@ def _read_context_file(path: Path, root: Optional[Path] = None) -> Optional[str]
 
 
 def _context_section(content: str, label: str, warn_name: str, path: Path, context_length: Optional[int]) -> str:
-    """Threat-scan *content*, render it as ``## <label>``, cap it to the budget (*warn_name* labels warnings)."""
-    body = f"## {label}\n\n{_scan_context_content(content, label)}"
+    """Render *content* as ``## <label>``, cap it to the budget (*warn_name* labels warnings)."""
+    body = f"## {label}\n\n{_strip_bom(content)}"
     return _truncate_content(body, warn_name, context_length=context_length, read_path=str(path))
 
 
@@ -1758,7 +1721,7 @@ def _load_claude_md(cwd_path: Path, context_length: Optional[int] = None) -> str
 def _load_cursorrules(cwd_path: Path, context_length: Optional[int] = None) -> str:
     """.cursorrules + .cursor/rules/*.mdc — cwd only, concatenated."""
     cursorrules_content = "".join(
-        f"## {label}\n\n{_scan_context_content(content, label)}\n\n"
+        f"## {label}\n\n{_strip_bom(content)}\n\n"
         for label, _path, content in _cursorrules_candidates(cwd_path) if content
     )
     if not cursorrules_content:

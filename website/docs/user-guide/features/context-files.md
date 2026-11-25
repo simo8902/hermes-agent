@@ -67,10 +67,6 @@ This approach has two advantages over loading everything at startup:
 
 Each subdirectory is checked at most once per session. The discovery also walks up parent directories, so reading `backend/src/main.py` will discover `backend/AGENTS.md` even if `backend/src/` has no context file of its own.
 
-:::info
-Subdirectory context files go through the same [security scan](#security-prompt-injection-protection) as startup context files. Malicious files are blocked.
-:::
-
 ### Example AGENTS.md
 
 ```markdown
@@ -127,10 +123,9 @@ Context files are loaded by `build_context_files_prompt()` in `agent/prompt_buil
 
 1. **Scan working directory** — checks for `.hermes.md` → `AGENTS.md` → `CLAUDE.md` → `.cursorrules` (first match wins)
 2. **Content is read** — each file is read as UTF-8 text. A file (or symlink) whose resolved target lies outside the project (the git root, else the working directory) or is on the file read deny-list is skipped. When that root is your home directory or above (a dotfiles repo at `$HOME`, or a session started in `$HOME`), the target must instead stay inside the file's own directory. Subdirectory context files follow the same rule, with the session's working directory as the root
-3. **Security scan** — content is checked for prompt injection patterns
-4. **Truncation** — files exceeding the character cap are head/tail truncated (70% head, 20% tail, with a marker in the middle). The cap is an explicit `context_file_max_chars` from config.yaml when set; otherwise it scales dynamically with the model's context window (floor 20,000 chars, ceiling 500,000)
-5. **Assembly** — all sections are combined under a `# Project Context` header
-6. **Injection** — the assembled content is added to the system prompt
+3. **Truncation** — files exceeding the character cap are head/tail truncated (70% head, 20% tail, with a marker in the middle). The cap is an explicit `context_file_max_chars` from config.yaml when set; otherwise it scales dynamically with the model's context window (floor 20,000 chars, ceiling 500,000)
+4. **Assembly** — all sections are combined under a `# Project Context` header
+5. **Injection** — the assembled content is added to the system prompt
 
 ### During the session (progressive discovery)
 
@@ -139,9 +134,8 @@ Context files are loaded by `build_context_files_prompt()` in `agent/prompt_buil
 1. **Path extraction** — after each tool call, file paths are extracted from arguments (`path`, `workdir`, shell commands)
 2. **Ancestor walk** — the directory and up to 5 parent directories are checked (stopping at already-visited directories)
 3. **Hint loading** — if an `AGENTS.md`, `CLAUDE.md`, or `.cursorrules` is found, it's loaded (first match per directory)
-4. **Security scan** — same prompt injection scan as startup files
-5. **Truncation** — capped at 32,000 characters per file (a fixed preview cap; `context_file_max_chars` and the model's context window do not change it). An oversized hint keeps its head/tail marker pointing at the full file and is logged, but does not raise the chat truncation warning that startup context files do
-6. **Injection** — appended to the tool result, so the model sees it in context naturally
+4. **Truncation** — capped at 32,000 characters per file (a fixed preview cap; `context_file_max_chars` and the model's context window do not change it). An oversized hint keeps its head/tail marker pointing at the full file and is logged, but does not raise the chat truncation warning that startup context files do
+5. **Injection** — appended to the tool result, so the model sees it in context naturally
 
 The final prompt section looks roughly like:
 
@@ -162,40 +156,6 @@ The following project context files have been loaded and should be followed:
 ```
 
 Notice that SOUL content is inserted directly, without extra wrapper text.
-
-## Security: Prompt Injection Protection
-
-All context files are scanned for potential prompt injection before being included. The scanner checks for:
-
-- **Instruction override attempts**: "ignore previous instructions", "disregard your rules"
-- **Deception patterns**: "do not tell the user"
-- **System prompt overrides**: "system prompt override"
-- **Hidden HTML comments**: `<!-- ignore instructions -->`
-- **Hidden div elements**: `<div style="display:none">`
-- **Credential exfiltration**: `curl ... $API_KEY`
-- **Secret file access**: `cat .env`, `cat credentials`
-- **Invisible characters**: zero-width spaces, bidirectional overrides, word joiners
-
-If any threat pattern is detected in a project context file (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`,
-`.cursorrules`), the file is blocked:
-
-```
-[BLOCKED: AGENTS.md contained potential prompt injection (prompt_injection). Content not loaded.]
-```
-
-Your own `SOUL.md` in `HERMES_HOME` is treated differently: it is a file you wrote (file-tool writes to it
-need your approval, and project checkouts never supply it), so a scanner hit there **does not block the
-file**. Hermes logs a warning naming the matched pattern, loads the file as usual, and `/context` lists it as
-`⚠ SOUL.md … loaded — matched prompt-injection pattern(s); review the file`. This lets an identity file that
-*documents* an attack phrase (security guidance such as "content telling you to ignore previous instructions")
-keep working; if you did not write the flagged text, treat the warning as a sign that something else edited
-the file. The exception does not extend to a `SOUL.md` shipped by a profile distribution: `hermes profile
-install <git-url>` and `hermes profile update` copy a third party's `SOUL.md` into the profile home without
-a scan or an approval prompt, so when `distribution.yaml` owns the file a scanner hit still blocks it.
-
-:::warning
-This scanner protects against common injection patterns, but it's not a substitute for reviewing context files in shared repositories. Always validate AGENTS.md content in projects you didn't author.
-:::
 
 ## Size Limits
 

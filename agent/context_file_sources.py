@@ -3,8 +3,7 @@
 Read-only: enumerates the same candidates ``build_context_files_prompt`` loads (through
 ``agent.prompt_builder.discover_context_files`` — one discovery walk, so the listing cannot drift from the
 prompt) and reports, per file, its size and whether it was loaded, truncated over the context-file cap,
-shadowed by a higher-priority context type, blocked by the injection scan (or, for the user's own SOUL.md,
-flagged but loaded), empty/unreadable, skipped by the containment check, or suppressed by the install-tree guard. Nothing here builds a prompt or touches the truncation-warning ContextVar, so it
+shadowed by a higher-priority context type, empty/unreadable, skipped by the containment check, or suppressed by the install-tree guard. Nothing here builds a prompt or touches the truncation-warning ContextVar, so it
 is free of cache impact.
 
 Approximations (the manifest re-derives, it does not re-render): the truncation check sizes the raw
@@ -26,8 +25,6 @@ _STATUS_DISPLAY = {
     "loaded": ("✓", ""),
     "truncated": ("◐", "truncated — over context_file_max_chars"),
     "shadowed": ("○", "not loaded — higher-priority context type wins"),
-    "blocked": ("✗", "not loaded — blocked by the prompt-injection scan"),
-    "flagged": ("⚠", "loaded — matched prompt-injection pattern(s); review the file"),
     "empty": ("○", "not loaded — empty file"),
     "unreadable": ("✗", "not loaded — could not be read"),
     "skipped": ("✗", "not loaded — resolves outside the project or to a protected file"),
@@ -38,7 +35,7 @@ _STATUS_DISPLAY = {
 def _entry(label: str, path: Path, content: str, status: str) -> dict[str, Any]:
     return {
         "label": label, "path": str(path), "chars": len(content), "est_tokens": estimate_tokens_rough(content),
-        "loaded": status in ("loaded", "truncated", "flagged"), "status": status,
+        "loaded": status in ("loaded", "truncated"), "status": status,
     }
 
 
@@ -50,11 +47,7 @@ def _empty_status(path: Path) -> str:
         return "unreadable"
 
 
-def _loaded_status(content: str, rendered_len: int, max_chars: int, user_authored: bool = False) -> str:
-    """Same scan the builder runs (``_scan_context_content``): a hit replaces a project file with a BLOCKED
-    marker; the user's own SOUL.md (*user_authored*) still loads and is reported as ``flagged``."""
-    if _pb._scan_for_threats(content.lstrip("\ufeff"), scope="context"):
-        return "flagged" if user_authored else "blocked"
+def _loaded_status(rendered_len: int, max_chars: int) -> str:
     return "truncated" if rendered_len > max_chars else "loaded"
 
 
@@ -66,7 +59,7 @@ def list_context_file_sources(
 
     Same signature semantics as ``build_context_files_prompt`` (``cwd=None`` → launch dir, install-tree guard
     unless *allow_install_tree_fallback*). Keys: ``label``, ``path``, ``chars``, ``est_tokens``, ``loaded``
-    and ``status`` ∈ loaded / truncated / flagged / shadowed / blocked / empty / unreadable / skipped / suppressed.
+    and ``status`` ∈ loaded / truncated / shadowed / empty / unreadable / skipped / suppressed.
     """
     cwd_path = _pb._context_cwd_path(cwd)
     max_chars = _pb._get_context_file_max_chars(context_length)
@@ -83,7 +76,7 @@ def list_context_file_sources(
         elif winner in (None, kind):
             winner = kind
             # The builder caps the rendered ``## label`` section, not the raw file.
-            status = _loaded_status(content, len(f"## {label}\n\n{content}"), max_chars)
+            status = _loaded_status(len(f"## {label}\n\n{content}"), max_chars)
         else:
             status = "shadowed"
         sources.append(_entry(label, path, content, status))
@@ -93,7 +86,7 @@ def list_context_file_sources(
         soul_path = home / "SOUL.md"
         if _pb._exists_or_denied(soul_path):
             content = _pb._read_context_file(soul_path) or ""  # None only with a containment root
-            status = (_loaded_status(content, len(content), max_chars, user_authored=True) if content
+            status = (_loaded_status(len(content), max_chars) if content
                       else _empty_status(soul_path))
             sources.append(_entry("SOUL.md", soul_path, content, status))
     return sources

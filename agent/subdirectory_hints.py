@@ -11,7 +11,7 @@ import shlex
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 
-from agent.prompt_builder import _read_text_with_timeout, _scan_context_content, _truncate_content
+from agent.prompt_builder import _read_text_with_timeout, _strip_bom, _truncate_content
 from agent.search_policy import SEARCH_PRUNE_DIR_NAMES
 
 logger = logging.getLogger(__name__)
@@ -323,8 +323,7 @@ class SubdirectoryHintTracker:
                     logger.debug("Skipping duplicate hint content at %s (digest %s)", hint_path, digest[:12])
                     return None
                 self._loaded_digests.add(digest)
-                # Same security scan as startup context loading.
-                content = _scan_context_content(content, filename)
+                content = _strip_bom(content)
                 rel_path = self._display_path(hint_path)
                 content = _truncate_content(
                     content, filename, max_chars=_MAX_HINT_CHARS, read_path=rel_path, queue_warning=False,

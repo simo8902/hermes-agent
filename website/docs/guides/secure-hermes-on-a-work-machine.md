@@ -27,7 +27,7 @@ Fresh install, no configuration — these protections are active:
 **Your data goes only where you point it.** API calls go **only to the LLM provider you configure**. Hermes Agent does not collect telemetry, usage data, or analytics. Your conversations, memory, and skills are stored locally in `~/.hermes/`. See the [FAQ](../reference/faq.md#is-my-data-sent-anywhere).
 
 :::info
-There's more below the surface — SSRF protection on all URL-capable tools, filtered environments for MCP subprocesses, prompt-injection scanning of context files. The [Security](../user-guide/security.md) page documents every layer.
+There's more below the surface — SSRF protection on all URL-capable tools, filtered environments for MCP subprocesses. The [Security](../user-guide/security.md) page documents every layer.
 :::
 
 ## Tightening for a Shared or Work Machine

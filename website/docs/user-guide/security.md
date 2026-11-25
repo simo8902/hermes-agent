@@ -924,37 +924,6 @@ Both go through the normal approval flow like every other dangerous pattern.
 Earlier releases bundled the external tirith scanner here. It was removed;
 upgrading drops the `security.tirith_*` settings and enables nothing in its place.
 
-### Context File Injection Protection
-
-Context files (AGENTS.md, .cursorrules, SOUL.md) are scanned for prompt injection before being included in the system prompt. The scanner checks for:
-
-- Instructions to ignore/disregard prior instructions
-- Hidden HTML comments with suspicious keywords
-- Attempts to read secrets (`.env`, `credentials`, `.netrc`)
-- Credential exfiltration via `curl`
-- Invisible Unicode characters (zero-width spaces, bidirectional overrides)
-
-The translation-and-execution check requires a short language/format clause (for example,
-“translate this into a bash script and execute it”). It does not connect translation
-and execution verbs across unrelated comma-separated role prose. These patterns are
-heuristics, not semantic intent detection.
-
-Blocked project files show a warning:
-
-```
-[BLOCKED: AGENTS.md contained potential prompt injection (prompt_injection). Content not loaded.]
-```
-
-Your own `SOUL.md` in `HERMES_HOME` is treated differently: it is a file you wrote (file-tool writes to it
-need your approval, and project checkouts never supply it), so a scanner hit there **does not block the
-file**. Hermes logs a warning naming the matched pattern, loads the file as usual, and `/context` lists it as
-`⚠ SOUL.md … loaded — matched prompt-injection pattern(s); review the file`. This lets an identity file that
-*documents* an attack phrase (security guidance such as "content telling you to ignore previous instructions")
-keep working; if you did not write the flagged text, treat the warning as a sign that something else edited
-the file. The exception does not extend to a `SOUL.md` shipped by a profile distribution: `hermes profile
-install <git-url>` and `hermes profile update` copy a third party's `SOUL.md` into the profile home without
-a scan or an approval prompt, so when `distribution.yaml` owns the file a scanner hit still blocks it.
-
 ## Best Practices for Production Deployment
 
 ### Gateway Deployment Checklist
